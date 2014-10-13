@@ -74,15 +74,125 @@ var move = function(gameData, helpers) {
 //   return choices[Math.floor(Math.random()*4)];
 // };
 
-// The "Priest"
-// This hero will heal nearby friendly champions.
+// // The "Priest"
+// // This hero will heal nearby friendly champions.
+// var move = function(gameData, helpers) {
+//   var myHero = gameData.activeHero;
+//
+//   if (myHero.health < 60) {
+//     return helpers.findNearestHealthWell(gameData);
+//   } else {
+//     return helpers.findNearestTeamMember(gameData);
+//   }
+// };
+
+// helpful opportunist
 var move = function(gameData, helpers) {
-  var myHero = gameData.activeHero;
-  if (myHero.health < 60) {
-    return helpers.findNearestHealthWell(gameData);
-  } else {
-    return helpers.findNearestTeamMember(gameData);
+  var board = gameData.board;
+  var me = gameData.activeHero;
+  var aroundMe = {
+    'North' : undefined,
+    'East'  : undefined,
+    'South' : undefined,
+    'West'  : undefined
+  };
+  var direction;
+  var friend, enemy, mine, grave, well;
+  var defaultMoves = [
+    'findNearestWeakerEnemy',
+    'findNearestNonTeamDiamondMine',
+    'findNearestTeamMember',
+    'findNearestEnemy'
+  ];
+  var defaultMove;
+  var movePrecedence = {
+    finishEnemy: 1,
+    helpFriend: 2,
+    getHealthy: 3,
+    takeBreak: 3,
+    takeMine: 4,
+    takeGrave: 5
+  };
+  var bestMove = {
+    intent: undefined,
+    direction: undefined
+  };
+  var determineBestMove = function(intent, direction) {
+    if(direction !== undefined && bestMove.intent === undefined ||
+        movePrecedence[bestMove.intent] > movePrecedence[intent]) {
+      bestMove = {
+        intent: intent,
+        direction: direction
+      }
+    }
+  };
+
+  if(me.health <= 60) {
+    // go get healthy
+    determineBestMove('getHealthy', helpers.findNearestHealthWell(gameData));
   }
+
+  for(direction in aroundMe) {
+    aroundMe[direction] = helpers.getTileNearby(
+      board, me.distanceFromTop, me.distanceFromLeft, direction);
+
+    switch(aroundMe[direction].type) {
+      case 'Hero': {
+        if(me.team === aroundMe[direction].team) {
+          friend = aroundMe[direction];
+        }
+        else {
+          enemy = aroundMe[direction];
+        }
+
+        if(friend && friend.health <= 60) {
+          // help a weak friend
+          determineBestMove('helpFriend', direction);
+        }
+
+        if(enemy && enemy.health <= 30) {
+          // finish off a weak enemy
+          determineBestMove('finishEnemy', direction);
+        }
+
+        break;
+      }
+      case 'DiamondMine': {
+        mine = aroundMe[direction];
+
+        if(mine.owner === undefined || mine.owner.team !== me.team) {
+          determineBestMove('takeMine', direction);
+        }
+
+        break;
+      }
+      case 'HealthWell': {
+        well = aroundMe[direction];
+
+        if(me.health < 100) {
+          // chill out
+          determineBestMove('takeBreak', direction);
+        }
+
+        break;
+      }
+      case 'Unoccupied': {
+        if(aroundMe[direction].subType === 'Bones') {
+          grave = aroundMe[direction];
+          determineBestMove('takeGrave', direction);
+        }
+      }
+    }
+  }
+
+  while(!bestMove.direction && defaultMoves.length) {
+    defaultMove = defaultMoves.shift();
+    determineBestMove(defaultMove, helpers[defaultMove].call(this, gameData));
+  }
+
+  //console.log(me, bestMove, aroundMe, friend, enemy, mine, well, grave);
+
+  return bestMove.direction;
 };
 
 // // The "Unwise Assassin"
