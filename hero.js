@@ -86,6 +86,38 @@ var move = function(gameData, helpers) {
 //   }
 // };
 
+findNearestWeakerEnemy = function(gameData, helpers) {
+  var hero = gameData.activeHero;
+  var board = gameData.board;
+
+  //Get the path info object
+  var pathInfoObject = helpers.findNearestObjectDirectionAndDistance(board, hero, function(enemyTile) {
+    return enemyTile.type === 'Hero' && enemyTile.team !== hero.team && enemyTile.health < hero.health;
+  });
+
+  return pathInfoObject;
+};
+
+findNearestNonTeamDiamondMine = function(gameData, helpers) {
+  var hero = gameData.activeHero;
+  var board = gameData.board;
+
+  //Get the path info object
+  var pathInfoObject = helpers.findNearestObjectDirectionAndDistance(board, hero, function(mineTile) {
+    if (mineTile.type === 'DiamondMine') {
+      if (mineTile.owner) {
+        return mineTile.owner.team !== hero.team;
+      } else {
+        return true;
+      }
+    } else {
+      return false;
+    }
+  }, board);
+
+  return pathInfoObject;
+};
+
 // helpful opportunist
 var move = function(gameData, helpers) {
   var board = gameData.board;
@@ -98,9 +130,8 @@ var move = function(gameData, helpers) {
   };
   var direction;
   var friend, enemy, mine, grave, well;
+  var nearestWeakerEnemy, nearestNonTeamDiamondMine, nearestLongGoal;
   var defaultMoves = [
-    'findNearestWeakerEnemy',
-    'findNearestNonTeamDiamondMine',
     'findNearestTeamMember',
     'findNearestEnemy'
   ];
@@ -182,6 +213,28 @@ var move = function(gameData, helpers) {
           determineBestMove('takeGrave', direction);
         }
       }
+    }
+  }
+
+  // long game
+  if(!bestMove.direction) {
+    nearestWeakerEnemy = findNearestWeakerEnemy(gameData, helpers);
+    nearestNonTeamDiamondMine = findNearestNonTeamDiamondMine(gameData, helpers);
+
+    if(nearestWeakerEnemy && nearestWeakerEnemy.distance) {
+      nearestLongGoal = nearestWeakerEnemy;
+      nearestLongGoal.intent = 'findNearestWeakerEnemy';
+    }
+
+    if(nearestNonTeamDiamondMine && nearestNonTeamDiamondMine.distance &&
+      !nearestWeakerEnemy ||
+      nearestNonTeamDiamondMine.distance < nearestWeakerEnemy.distance) {
+      nearestLongGoal = nearestNonTeamDiamondMine;
+      nearestLongGoal.intent = 'findNearestNonTeamDiamondMine';
+    }
+
+    if(nearestLongGoal) {
+      determineBestMove(nearestLongGoal.intent, nearestLongGoal.direction);
     }
   }
 
