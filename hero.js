@@ -106,7 +106,7 @@ findNearestNonTeamDiamondMine = function(gameData, helpers) {
   var pathInfoObject = helpers.findNearestObjectDirectionAndDistance(board, hero, function(mineTile) {
     if (mineTile.type === 'DiamondMine') {
       if (mineTile.owner) {
-        return mineTile.owner.team !== hero.team;
+        return mineTile.owner.team !== hero.team || mineTile.owner.dead;
       } else {
         return true;
       }
