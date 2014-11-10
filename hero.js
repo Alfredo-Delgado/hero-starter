@@ -186,50 +186,121 @@ var moves = {
  * MY CODE
  *
  */
-findNearestWeakerEnemy = function(gameData, helpers) {
-  var hero = gameData.activeHero;
-  var board = gameData.board;
-
-  //Get the path info object
-  var pathInfoObject = helpers.findNearestObjectDirectionAndDistance(board, hero, function(enemyTile) {
-    return enemyTile.type === 'Hero' && enemyTile.team !== hero.team && enemyTile.health < hero.health;
-  });
-
-  return pathInfoObject;
-};
-
-findNearestNonTeamDiamondMine = function(gameData, helpers) {
-  var hero = gameData.activeHero;
-  var board = gameData.board;
-
-  //Get the path info object
-  var pathInfoObject = helpers.findNearestObjectDirectionAndDistance(board, hero, function(mineTile) {
-    if (mineTile.type === 'DiamondMine') {
-      if (mineTile.owner) {
-        return mineTile.owner.team !== hero.team || mineTile.owner.dead;
-      } else {
-        return true;
-      }
-    } else {
-      return false;
-    }
-  }, board);
-
-  return pathInfoObject;
-};
 
 // helpful opportunist
 var move = function(gameData, helpers) {
   var board = gameData.board;
   var me = gameData.activeHero;
-  var aroundMe = {
-    'North' : undefined,
-    'East'  : undefined,
-    'South' : undefined,
-    'West'  : undefined
+
+  var lookAround = function(tile) {
+    if(!tile.type) {
+      return {}; // TODO: send in a PR to fix helpers.validCoordinates?
+    }
+
+    var aroundTile = {
+      'North' : undefined,
+      'East'  : undefined,
+      'South' : undefined,
+      'West'  : undefined
+    };
+
+    var direction;
+
+    for(direction in aroundTile) {
+      aroundTile[direction] = helpers.getTileNearby(
+        board, tile.distanceFromTop, tile.distanceFromLeft, direction);
+    }
+
+    return aroundTile;
   };
+
+  var isNearHealthWell = function(tile) {
+    var aroundTile = lookAround(tile);
+    var direction;
+
+    for(direction in aroundTile) {
+      if(aroundTile[direction].type === 'HealthWell') {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  var findNearestWeakerEnemy = function() {
+    //Get the path info object
+    return helpers.findNearestObjectDirectionAndDistance(board, me, function(enemyTile) {
+      if(enemyTile.type === 'Hero' && enemyTile.team !== me.team) {
+
+        if(enemyTile.health <= 20) {
+          return true; // see if you can beat them to health well
+        }
+
+        if(isNearHealthWell(enemyTile)) {
+          return false; // they won't be weak for long
+        }
+
+        return enemyTile.health < me.health;
+      }
+
+      return false;
+    });
+  };
+
+  var findBestDiamondMine = function() {
+    var aroundMine;
+    var direction;
+
+    //Get the path info object
+    return helpers.findNearestObjectDirectionAndDistance(board, me, function(mineTile) {
+      if (mineTile.type === 'DiamondMine') {
+
+        if(mineTile.owner && mineTile.owner.dead) {
+          return true; // most players don't seem to know about this
+        }
+
+        aroundMine = lookAround(mineTile);
+        for(direction in aroundMine) {
+          if(aroundMine[direction].type === 'Hero' &&
+            me.team === aroundMine[direction].team) {
+            return false; // somebody is probably going to take it
+          }
+        }
+
+        if(mineTile.owner) {
+          return mineTile.owner.team !== me.team;
+        }
+
+        return true;
+      }
+
+      return false;
+    }, board);
+  };
+
+  var findNearestHealthWell = function() {
+    //Get the path info object
+    return helpers.findNearestObjectDirectionAndDistance(board, me, function(healthWellTile) {
+      return healthWellTile.type === 'HealthWell';
+    });
+  };
+
+  var findNearestEnemy = function() {
+    //Get the path info object
+    return helpers.findNearestObjectDirectionAndDistance(board, me, function(enemyTile) {
+      return enemyTile.type === 'Hero' && enemyTile.team !== me.team;
+    });
+  };
+
+  //if(gameData.turn === 0 ) {
+  //  gameData.healthWells.forEach(function(healthWell) { console.log(healthWell.distanceFromTop + 1, healthWell.distanceFromLeft); gameData.addHealthWell(healthWell.distanceFromTop + 1, healthWell.distanceFromLeft); } );
+  //}
+
+  var aroundMe = lookAround(me);
   var direction;
   var friend, enemy, mine, grave, well;
+  var nearestHealthWell = findNearestHealthWell() || {};
+  var nearestEnemy = findNearestEnemy() || {};
   var nearestWeakerEnemy, nearestNonTeamDiamondMine, nearestLongGoal;
   var defaultMoves = [
     'findNearestTeamMember',
@@ -238,11 +309,12 @@ var move = function(gameData, helpers) {
   var defaultMove;
   var movePrecedence = {
     finishEnemy: 1,
-    helpFriend: 2,
-    getHealthy: 3,
-    takeBreak: 3,
-    takeMine: 4,
-    takeGrave: 5
+    confrontEnemy: 2,
+    helpFriend: 3,
+    getHealthy: 4,
+    takeBreak: 4,
+    takeMine: 5,
+    takeGrave: 6
   };
   var bestMove = {
     intent: undefined,
@@ -260,13 +332,10 @@ var move = function(gameData, helpers) {
 
   if(me.health <= 60) {
     // go get healthy
-    determineBestMove('getHealthy', helpers.findNearestHealthWell(gameData));
+    determineBestMove('getHealthy', nearestHealthWell.direction);
   }
 
   for(direction in aroundMe) {
-    aroundMe[direction] = helpers.getTileNearby(
-      board, me.distanceFromTop, me.distanceFromLeft, direction);
-
     switch(aroundMe[direction].type) {
       case 'Hero': {
         if(me.team === aroundMe[direction].team) {
@@ -286,6 +355,14 @@ var move = function(gameData, helpers) {
           determineBestMove('finishEnemy', direction);
         }
 
+        // next to health well distance === 1
+        if(enemy && !isNearHealthWell(enemy) &&
+          nearestHealthWell.distance > 1 &&
+          (nearestHealthWell.distance * 20) > me.health) {
+          // fight for your life
+          determineBestMove('confrontEnemy', direction);
+        }
+
         break;
       }
       case 'DiamondMine': {
@@ -301,7 +378,12 @@ var move = function(gameData, helpers) {
       case 'HealthWell': {
         well = aroundMe[direction];
 
-        if(me.health < 100) {
+        // take in full health
+        // if no enemies are around or the enemy isn't by a health well
+        // otherwise 80% is the maximum you can have
+        if((me.health < 100 &&
+          (nearestEnemy.distance > 1 || !isNearHealthWell(nearestEnemy))) ||
+          me.health < 80 ) {
           // chill out
           determineBestMove('takeBreak', direction);
         }
@@ -319,8 +401,8 @@ var move = function(gameData, helpers) {
 
   // long game
   if(!bestMove.direction) {
-    nearestWeakerEnemy = findNearestWeakerEnemy(gameData, helpers);
-    nearestNonTeamDiamondMine = findNearestNonTeamDiamondMine(gameData, helpers);
+    nearestWeakerEnemy = findNearestWeakerEnemy();
+    nearestNonTeamDiamondMine = findBestDiamondMine();
 
     if(nearestWeakerEnemy && nearestWeakerEnemy.distance) {
       nearestLongGoal = nearestWeakerEnemy;
@@ -331,7 +413,7 @@ var move = function(gameData, helpers) {
       !nearestWeakerEnemy ||
       nearestNonTeamDiamondMine.distance < nearestWeakerEnemy.distance) {
       nearestLongGoal = nearestNonTeamDiamondMine;
-      nearestLongGoal.intent = 'findNearestNonTeamDiamondMine';
+      nearestLongGoal.intent = 'findBestDiamondMine';
     }
 
     if(nearestLongGoal) {
