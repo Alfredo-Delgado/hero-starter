@@ -247,6 +247,14 @@ var move = function(gameData, helpers) {
     });
   };
 
+  var findNearestBrokeBastard = function() {
+    //Get the path info object
+    return helpers.findNearestObjectDirectionAndDistance(board, me, function(enemyTile) {
+      return enemyTile.type === 'Hero' && enemyTile.team !== me.team &&
+        enemyTile.diamondsEarned === 0;
+    });
+  };
+
   var findBestDiamondMine = function() {
     var aroundMine;
     var direction;
@@ -301,6 +309,7 @@ var move = function(gameData, helpers) {
   var friend, enemy, mine, grave, well;
   var nearestHealthWell = findNearestHealthWell() || {};
   var nearestEnemy = findNearestEnemy() || {};
+  var nearestBrokeBastard = findNearestBrokeBastard() || {};
   var nearestWeakerEnemy, nearestNonTeamDiamondMine, nearestLongGoal;
   var defaultMoves = [
     'findNearestTeamMember',
@@ -313,8 +322,9 @@ var move = function(gameData, helpers) {
     helpFriend: 3,
     getHealthy: 4,
     takeBreak: 4,
-    takeMine: 5,
-    takeGrave: 6
+    attackEnemy: 5,
+    takeMine: 6,
+    takeGrave: 7
   };
   var bestMove = {
     intent: undefined,
@@ -333,6 +343,10 @@ var move = function(gameData, helpers) {
   if(me.health <= 60) {
     // go get healthy
     determineBestMove('getHealthy', nearestHealthWell.direction);
+  }
+
+  if(nearestBrokeBastard.distance === 2) {
+    determineBestMove('attackEnemy', nearestBrokeBastard.direction);
   }
 
   for(direction in aroundMe) {
