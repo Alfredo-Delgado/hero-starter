@@ -251,7 +251,8 @@ var move = function(gameData, helpers) {
     //Get the path info object
     return helpers.findNearestObjectDirectionAndDistance(board, me, function(enemyTile) {
       return enemyTile.type === 'Hero' && enemyTile.team !== me.team &&
-        enemyTile.diamondsEarned === 0;
+        enemyTile.diamondsEarned === 0 &&
+        (!isNearHealthWell(enemyTile) || enemyTile.health <= 20);
     });
   };
 
